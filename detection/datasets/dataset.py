@@ -189,8 +189,8 @@ class Dataprocessor:
             x /= logits_shape[1]
             y /= logits_shape[0]
             # h, w, 4
-            grid_cell = tf.stack([y, x], axis=-1)
-            grid_cell = tf.reshape(grid_cell, [-1, 2])
+            grid_cell_hw = tf.stack([y, x], axis=-1)
+            grid_cell = tf.reshape(grid_cell_hw, [-1, 2])
             # grid_cell = tf.stack([y, x, y, x], axis=-1)
 
             # y, x, y, x
@@ -233,11 +233,12 @@ class Dataprocessor:
             # tf.print(centers_distance.shape)
             # tf.print(label.shape)
             # tf.print(label[:, 4][gt_index[10]])
-            logits_label = tf.gather(label[:, 4], gt_index)
-            # tf.print(logits_label)
+            logits_label = tf.gather(label[:, 4], gt_index) - 1
+            # tf.print(tf.unique(label[:, 4]))
             min_centers_distance = tf.math.reduce_min(centers_distance, axis=1, keepdims=False)
             logits_label = tf.where(min_centers_distance == 99999, -1., logits_label)
             logits_label = tf.cast(logits_label, tf.int64)
+            # tf.print(tf.unique(logits_label))
             logits_label = tf.one_hot(logits_label, classes-1, on_value=1.0, off_value=0.0, axis=-1)
             # label_class = tf.cast(label[:, 4], tf.int64) - 1
             # logits_label = tf.ones([logits_shape[0], logits_shape[1]], dtype=tf.int64) * -1
@@ -259,11 +260,13 @@ class Dataprocessor:
             # box_label = tf.zeros([logits_shape[0] * logits_shape[1], 4], dtype=tf.float32)
             # box_label = tf.tensor_scatter_nd_update(box_label, centers_label, tf.constant(1))
             # selected_position = tf.gather_nd(grid_cell, centers_label)
+            # h, w, 2
+            # grid_cell_hw
             # encoded_box = tf.stack([
-            #     selected_position[:, 0] - label[:, 0],
-            #     selected_position[:, 1] - label[:, 1],
-            #     label[:, 2] - selected_position[:, 2],
-            #     label[:, 3] - selected_position[:, 3]
+            #     grid_cell_hw[..., 0] - label[:, 0],
+            #     grid_cell_hw[..., 1] - label[:, 1],
+            #     label[:, 2] - grid_cell_hw[:, 2],
+            #     label[:, 3] - grid_cell_hw[:, 3]
             # ], axis=-1)
             
             # box_label = tf.tensor_scatter_nd_update(box_label, gt_index, label[:, :4])
@@ -271,6 +274,13 @@ class Dataprocessor:
             # box_targets = tf.concat(box_targets)
             box_label = tf.gather(label[:, :4], gt_index)
             box_label = tf.reshape(box_label, [logits_shape[0], logits_shape[1], 4])
+            box_label = tf.stack([
+                grid_cell_hw[..., 0] - box_label[..., 0],
+                grid_cell_hw[..., 1] - box_label[..., 1],
+                box_label[..., 2] - grid_cell_hw[..., 0],
+                box_label[..., 3] - grid_cell_hw[..., 1]
+            ], axis=-1)
+            # tf.print(box_label)
             logits_label = tf.reshape(logits_label, [logits_shape[0], logits_shape[1], -1])
             return tf.concat([box_label, logits_label], axis=-1)
 

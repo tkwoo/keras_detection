@@ -46,7 +46,7 @@ def put_text(img, texts):
     return img
 
 
-def get_grid(h=78, w=46):
+def get_grid(h=38, w=22):
     x, y = tf.meshgrid(tf.range(w), tf.range(h))
     x, y = tf.cast(x, tf.float32), tf.cast(y, tf.float32)
     x += 0.5
@@ -96,17 +96,18 @@ def predict_and_show(model, ):
         # print(image_)
         image_ = np.expand_dims(image_, axis=0)
         logits, boxes = model.model(image_, False)
-        logits = tf.nn.softmax(logits)
+        # logits = tf.nn.softmax(logits)
         logits, boxes = logits.numpy(), boxes.numpy()
-        print(logits)
-        max_value = np.amax(logits)
-        logits = np.amax(logits, axis=-1)
-        mask = logits == max_value
+        # print(logits)
+        # max_value = np.amax(logits)
+        # print(max_value)
+        # logits = np.amax(logits, axis=-1)
+        # mask = logits == max_value
         # # logits = logits[..., 1:]
-        # logits = logits > 0.5
+        logits = logits > 0.5
 
-        # mask = np.sum(logits, axis=-1, keepdims=False) > 0
-        print(np.sum(mask))
+        mask = np.sum(logits, axis=-1, keepdims=False) > 0
+        # print(np.sum(mask))
         grid_cell = get_grid()
         # print(grid_cell[40, 20])
         # print(boxes[0, 0:10,])
@@ -120,7 +121,7 @@ def predict_and_show(model, ):
         # print(boxes[0, 40, 20])
         boxes = boxes[mask].reshape([-1, 4])
         boxes = np.clip(boxes, a_min=0, a_max=1)
-        # print(boxes)
+        print(boxes)
         image = image.numpy()
         h, w, c = image.shape
         print(h, ' ', w)

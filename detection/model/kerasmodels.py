@@ -1,5 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from numpy.core.defchararray import encode
+
 import tensorflow_addons as tfa
 import tensorflow as tf
 from tensorflow import keras
@@ -73,12 +75,12 @@ class CustomModel(tf.keras.Model):
             layers.Conv2D(
                 filters=4,
                 kernel_size=3,
-                padding='same', activation='sigmoid'
+                padding='same'#, activation='sigmoid'
             ),
             
         ])
-        # self.scaler = tf.Variable(1.)
-        # self.final_relu = layers.Activation('relu')
+        self.scaler = tf.Variable(1.)
+        self.final_relu = layers.Activation('relu')
         
         self.final_logit = keras.Sequential([
             layers.Conv2D(
@@ -165,8 +167,8 @@ class CustomModel(tf.keras.Model):
         output = self.model(x)
         output = self.deconv_layers(output)
         box_pred = self.box_pred(output)
-        # box_pred = box_pred * self.scaler
-        # box_pred = self.final_relu(box_pred)
+        box_pred = box_pred * self.scaler
+        box_pred = self.final_relu(box_pred)
         logits = self.final_logit(output)
         return logits, box_pred
 
@@ -219,27 +221,56 @@ class CustomModel(tf.keras.Model):
 
         box_label, logits_label = label[..., :4], label[..., 4:]
         # logits_loss = sparse_categorical_focal_loss(logits_label, logits, 2.0, from_logits=True)
-        # logits_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(tf.cast(logits_label, tf.int64), logits)
+        # logits_loss = tf.nn.softmax_cross_entropy_with_logits(tf.cast(logits_label, tf.int64), logits)
         logits_loss = tfa.losses.sigmoid_focal_crossentropy(logits_label, logits, from_logits=False)
         # tf.print(tf.reduce_sum(logits_label))
         # tf.print(tf.size(logits_label))
         # tf.print(grid_cell[..., 0].shape)
-        logits_loss = tf.reduce_sum(logits_loss) / self.cfg.BATCH_SIZE
-        encoded_box = tf.stack([
-                grid_cell[..., 0] - box_pred[..., 0],
-                grid_cell[..., 1] - box_pred[..., 1],
-                box_pred[..., 2] + grid_cell[..., 2],
-                box_pred[..., 3] + grid_cell[..., 3]
-            ], axis=-1)
-        # tf.print(encoded_box[0])
+        logits_loss = tf.reduce_sum(logits_loss)
+        # encoded_box = tf.stack([
+        #         grid_cell[..., 0] - box_pred[..., 0],
+        #         grid_cell[..., 1] - box_pred[..., 1],
+        #         box_pred[..., 2] + grid_cell[..., 2],
+        #         box_pred[..., 3] + grid_cell[..., 3]
+        #     ], axis=-1)
         
-        encoded_box = tf.clip_by_value(encoded_box, clip_value_min=0, clip_value_max=1)
+        # encoded_box = tf.clip_by_value(encoded_box, clip_value_min=0, clip_value_max=1)
+        # tf.print('here' * 10)
         mask = tf.math.reduce_sum(logits_label, axis=-1)
         mask = tf.math.greater(mask, tf.constant(0.))
-        encoded_box = tf.boolean_mask(encoded_box, mask)
-        box_target = tf.boolean_mask(box_label, mask)
-        # tf.print(encoded_box)
-        # tf.print(box_target)
-        box_loss = tfa.losses.giou_loss(box_target, encoded_box)
-        box_loss = tf.reduce_sum(box_loss) / self.cfg.BATCH_SIZE
+        # encoded_box = tf.boolean_mask(encoded_box, mask)
+
+        box_pred = tf.boolean_mask(box_pred, mask)
+        box_label = tf.boolean_mask(box_label, mask)
+        # tf.print(box_pred)
+        # tf.print(box_label)
+        box_loss = self.iou_loss(box_label, box_pred)
+
+        # box_loss = tfa.losses.giou_loss(box_target, encoded_box)
+        logits_loss = logits_loss / tf.reduce_sum(tf.cast(mask, tf.float32))
+        box_loss = box_loss / tf.reduce_sum(tf.cast(mask, tf.float32))
         return logits_loss, box_loss
+
+    def iou_loss(self, target, pred):
+        pred_left = pred[:, 1]
+        pred_top = pred[:, 0]
+        pred_right = pred[:, 3]
+        pred_bottom = pred[:, 2]
+
+        target_left = target[:, 1]
+        target_top = target[:, 0]
+        target_right = target[:, 3]
+        target_bottom = target[:, 2]
+
+        target_area = (target_left + target_right) * \
+                      (target_top + target_bottom)
+
+        pred_area = (pred_left + pred_right) * \
+                    (pred_top + pred_bottom)
+        w_intersect = tf.math.minimum(pred_left, target_left) + tf.math.minimum(pred_right, target_right)
+        h_intersect = tf.math.minimum(pred_bottom, target_bottom) + tf.math.minimum(pred_top, target_top)
+        area_intersect = w_intersect * h_intersect
+        area_union = target_area + pred_area - area_intersect
+        ious = (area_intersect + 1.0) / (area_union + 1.0)
+        losses = -tf.math.log(ious)
+        return tf.math.reduce_sum(losses)
