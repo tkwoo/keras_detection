@@ -1,0 +1,18 @@
+MODEL:
+  NAME: 'mobilenet'
+  CLASSES: ('hwear', 'hunwear')
+  NUM_CLASSES: 3
+EPOCH: 100
+NUM_DECONV_LAYERS: 2
+DECONV_WITH_BIAS: False
+SOLVER:
+  WARMUP: True
+  LR: 0.0001
+  SCHEDULER:
+    EPOCHS: (50, 70)
+DATA:
+  SIZE: (128, 256)
+TRAIN_DIR: ('data/upper_cropped_1', 'data/upper_cropped_2', 'data/upper_cropped_3')
+VAL_DIR: ('data/upper_cropped_3',)
+BATCH_SIZE: 48
+OUTPUT_DIR: 'test'
